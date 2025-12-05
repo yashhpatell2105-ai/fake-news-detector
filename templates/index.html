@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TRUTH - Fake News Detector</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            color: #333;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 40px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.2);
+        }
+
+        .header p {
+            font-size: 1.1em;
+            opacity: 0.9;
+        }
+
+        .content {
+            padding: 40px;
+        }
+
+        .input-section {
+            margin-bottom: 30px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #555;
+        }
+
+        input[type="text"],
+        textarea {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 16px;
+            font-family: inherit;
+            transition: border-color 0.3s;
+        }
+
+        input[type="text"]:focus,
+        textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        textarea {
+            min-height: 150px;
+            resize: vertical;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        button {
+            padding: 14px 28px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            flex: 1;
+            min-width: 150px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-secondary {
+            background: #f0f0f0;
+            color: #333;
+        }
+
+        .btn-secondary:hover {
+            background: #e0e0e0;
+        }
+
+        .result-section {
+            margin-top: 30px;
+            display: none;
+        }
+
+        .result-card {
+            border-radius: 12px;
+            padding: 25px;
+            margin-bottom: 20px;
+            animation: slideIn 0.5s ease-out;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .result-fake {
+            background: #fee;
+            border-left: 5px solid #f44336;
+        }
+
+        .result-real {
+            background: #efe;
+            border-left: 5px solid #4caf50;
+        }
+
+        .result-warning {
+            background: #fff9e6;
+            border-left: 5px solid #ff9800;
+        }
+
+        .result-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 15px;
+        }
+
+        .result-title {
+            font-size: 1.5em;
+            font-weight: 700;
+        }
+
+        .score-badge {
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-weight: 600;
+            font-size: 0.9em;
+        }
+
+        .score-high {
+            background: #4caf50;
+            color: white;
+        }
+
+        .score-medium {
+            background: #ff9800;
+            color: white;
+        }
+
+        .score-low {
+            background: #f44336;
+            color: white;
+        }
+
+        .result-message {
+            font-size: 1.1em;
+            margin-bottom: 20px;
+            line-height: 1.6;
+        }
+
+        .details-section {
+            margin-top: 20px;
+        }
+
+        .details-title {
+            font-weight: 600;
+            margin-bottom: 10px;
+            color: #555;
+        }
+
+        .detail-item {
+            background: rgba(255, 255, 255, 0.7);
+            padding: 12px;
+            border-radius: 6px;
+            margin-bottom: 8px;
+            font-size: 0.95em;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .error {
+            background: #fee;
+            color: #c00;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 20px;
+            display: none;
+        }
+
+        .demo-section {
+            margin-top: 30px;
+            padding-top: 30px;
+            border-top: 2px solid #e0e0e0;
+        }
+
+        .demo-title {
+            font-size: 1.2em;
+            font-weight: 600;
+            margin-bottom: 15px;
+            color: #555;
+        }
+
+        .demo-article {
+            background: #f9f9f9;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .demo-article:hover {
+            background: #f0f0f0;
+            transform: translateX(5px);
+        }
+
+        .demo-article-title {
+            font-weight: 600;
+            margin-bottom: 5px;
+            color: #667eea;
+        }
+
+        .demo-article-source {
+            font-size: 0.9em;
+            color: #888;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔍 TRUTH</h1>
+            <p>Fake News Detection System</p>
+        </div>
+
+        <div class="content">
+            <div class="input-section">
+                <form id="verifyForm">
+                    <div class="form-group">
+                        <label for="articleText">Article Text *</label>
+                        <textarea id="articleText" name="text" placeholder="Paste the article text here..."></textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="articleUrl">Article URL (Optional)</label>
+                        <input type="text" id="articleUrl" name="url" placeholder="https://example.com/article">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="articleSource">Source (Optional)</label>
+                        <input type="text" id="articleSource" name="source" placeholder="e.g., BBC News, Reuters">
+                    </div>
+
+                    <div class="button-group">
+                        <button type="submit" class="btn-primary">Verify Article</button>
+                        <button type="button" class="btn-secondary" onclick="clearForm()">Clear</button>
+                    </div>
+                </form>
+            </div>
+
+            <div class="loading" id="loading">
+                <div class="spinner"></div>
+                <p style="margin-top: 10px;">Analyzing article...</p>
+            </div>
+
+            <div class="error" id="error"></div>
+
+            <div class="result-section" id="resultSection">
+                <div class="result-card" id="resultCard">
+                    <div class="result-header">
+                        <div class="result-title" id="resultTitle"></div>
+                        <div class="score-badge" id="scoreBadge"></div>
+                    </div>
+                    <div class="result-message" id="resultMessage"></div>
+                    <div class="details-section" id="detailsSection"></div>
+                </div>
+            </div>
+
+            <div class="demo-section">
+                <div class="demo-title">Try Demo Articles:</div>
+                <div id="demoArticles"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Load demo articles on page load
+        window.addEventListener('DOMContentLoaded', () => {
+            loadDemoArticles();
+        });
+
+        // Handle form submission
+        document.getElementById('verifyForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const text = document.getElementById('articleText').value.trim();
+            const url = document.getElementById('articleUrl').value.trim();
+            const source = document.getElementById('articleSource').value.trim();
+
+            if (!text && !url) {
+                showError('Please provide either article text or URL');
+                return;
+            }
+
+            hideError();
+            showLoading();
+            hideResult();
+
+            try {
+                const response = await fetch('/api/verify', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ text, url, source })
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.error || 'An error occurred');
+                }
+
+                displayResult(data);
+            } catch (error) {
+                showError(error.message);
+            } finally {
+                hideLoading();
+            }
+        });
+
+        function displayResult(data) {
+            const resultCard = document.getElementById('resultCard');
+            const resultTitle = document.getElementById('resultTitle');
+            const scoreBadge = document.getElementById('scoreBadge');
+            const resultMessage = document.getElementById('resultMessage');
+            const detailsSection = document.getElementById('detailsSection');
+
+            // Remove previous classes
+            resultCard.className = 'result-card';
+
+            // Set result type based on is_fake flag and score
+            if (data.is_fake === false && data.score >= 65) {
+                resultCard.classList.add('result-real');
+                resultTitle.textContent = '✅ Likely Real News';
+            } else if (data.is_fake === false && data.score >= 35) {
+                resultCard.classList.add('result-warning');
+                resultTitle.textContent = '⚠️ ' + (data.source_tier === 'Unknown Source (Neutral)' ? 'Unknown Source' : 'Suspicious Content');
+            } else {
+                resultCard.classList.add('result-fake');
+                resultTitle.textContent = '❌ Likely Fake News';
+            }
+
+            // Set score badge with breakdown
+            const scoreText = `Overall: ${data.score}/100`;
+            scoreBadge.textContent = scoreText;
+            scoreBadge.className = 'score-badge ';
+            if (data.score >= 65) {
+                scoreBadge.classList.add('score-high');
+            } else if (data.score >= 35) {
+                scoreBadge.classList.add('score-medium');
+            } else {
+                scoreBadge.classList.add('score-low');
+            }
+
+            // Set message with source tier
+            let messageHTML = data.message;
+            if (data.source_tier) {
+                messageHTML += `<br><small style="color: #666;">Source Tier: ${data.source_tier}</small>`;
+            }
+            messageHTML += ` <strong>(Confidence: ${data.confidence_percent || (data.confidence * 100).toFixed(0)}%)</strong>`;
+            resultMessage.innerHTML = messageHTML;
+
+            // Set details with enhanced information
+            let detailsHTML = '';
+            
+            // Score Breakdown
+            detailsHTML += '<div class="details-title">Score Breakdown:</div>';
+            detailsHTML += `<div class="detail-item"><strong>Source Score:</strong> ${data.source_score || 'N/A'}/100</div>`;
+            detailsHTML += `<div class="detail-item"><strong>Language Score:</strong> ${data.language_score || 'N/A'}/100</div>`;
+            detailsHTML += `<div class="detail-item"><strong>Quality Score:</strong> ${data.quality_score || 'N/A'}/100</div>`;
+            
+            if (data.details) {
+                // Source Analysis
+                if (data.details.source_analysis) {
+                    detailsHTML += '<div class="details-title" style="margin-top: 15px;">Source Analysis:</div>';
+                    detailsHTML += `<div class="detail-item"><strong>Credibility Tier:</strong> ${data.details.source_analysis.tier || data.source_tier}</div>`;
+                    if (data.details.source_analysis.author) {
+                        detailsHTML += `<div class="detail-item"><strong>Author:</strong> ${data.details.source_analysis.author}</div>`;
+                    }
+                    if (data.details.source_analysis.is_trusted) {
+                        detailsHTML += `<div class="detail-item" style="background: #efe; color: #060;">✓ Trusted Publisher (Protected from penalties)</div>`;
+                    }
+                    if (data.details.source_analysis.is_blacklisted) {
+                        detailsHTML += `<div class="detail-item" style="background: #fee; color: #600;">✗ Blacklisted Source</div>`;
+                    }
+                    if (data.details.source_analysis.factors) {
+                        data.details.source_analysis.factors.forEach(factor => {
+                            detailsHTML += `<div class="detail-item">${factor}</div>`;
+                        });
+                    }
+                }
+
+                // Fact-Check Information
+                if (data.fact_check_corroboration || data.details.fact_check) {
+                    detailsHTML += '<div class="details-title" style="margin-top: 15px;">Fact-Check Verification:</div>';
+                    if (data.fact_check_verdict) {
+                        const verdictColor = data.fact_check_verdict === 'true' ? '#060' : '#600';
+                        const verdictBg = data.fact_check_verdict === 'true' ? '#efe' : '#fee';
+                        detailsHTML += `<div class="detail-item" style="background: ${verdictBg}; color: ${verdictColor};"><strong>Verdict:</strong> ${data.fact_check_verdict.toUpperCase()}</div>`;
+                    } else {
+                        detailsHTML += `<div class="detail-item">No fact-check data available for this claim</div>`;
+                    }
+                }
+
+                // Cross-Source Verification
+                if (data.cross_source_verification !== undefined) {
+                    detailsHTML += '<div class="details-title" style="margin-top: 15px;">Cross-Source Verification:</div>';
+                    if (data.cross_source_verification) {
+                        detailsHTML += `<div class="detail-item" style="background: #efe; color: #060;">✓ Similar claims found in credible sources</div>`;
+                        if (data.cross_source_similarity) {
+                            detailsHTML += `<div class="detail-item">Semantic Similarity: ${(data.cross_source_similarity * 100).toFixed(1)}%</div>`;
+                        }
+                    } else {
+                        detailsHTML += `<div class="detail-item">No similar claims found in credible sources</div>`;
+                    }
+                }
+
+                // Language Analysis
+                if (data.details.language_analysis) {
+                    detailsHTML += '<div class="details-title" style="margin-top: 15px;">Language Analysis:</div>';
+                    if (data.details.language_analysis.factors) {
+                        data.details.language_analysis.factors.forEach(factor => {
+                            detailsHTML += `<div class="detail-item">${factor}</div>`;
+                        });
+                    }
+                }
+
+                // Quality Analysis
+                if (data.details.quality_analysis) {
+                    detailsHTML += '<div class="details-title" style="margin-top: 15px;">Content Quality:</div>';
+                    if (data.details.quality_analysis.factors) {
+                        data.details.quality_analysis.factors.forEach(factor => {
+                            detailsHTML += `<div class="detail-item">${factor}</div>`;
+                        });
+                    }
+                }
+
+                // Explanation
+                if (data.explanation) {
+                    detailsHTML += '<div class="details-title" style="margin-top: 15px;">Explanation:</div>';
+                    detailsHTML += `<div class="detail-item">${data.explanation}</div>`;
+                }
+            }
+
+            detailsSection.innerHTML = detailsHTML;
+            showResult();
+        }
+
+        async function loadDemoArticles() {
+            try {
+                const response = await fetch('/api/demo');
+                const articles = await response.json();
+
+                const demoContainer = document.getElementById('demoArticles');
+                demoContainer.innerHTML = '';
+
+                articles.forEach(article => {
+                    const articleDiv = document.createElement('div');
+                    articleDiv.className = 'demo-article';
+                    articleDiv.innerHTML = `
+                        <div class="demo-article-title">${article.title}</div>
+                        <div class="demo-article-source">${article.source}</div>
+                    `;
+                    articleDiv.addEventListener('click', () => {
+                        document.getElementById('articleText').value = article.text;
+                        document.getElementById('articleUrl').value = article.url || '';
+                        document.getElementById('articleSource').value = article.source || '';
+                    });
+                    demoContainer.appendChild(articleDiv);
+                });
+            } catch (error) {
+                console.error('Failed to load demo articles:', error);
+            }
+        }
+
+        function clearForm() {
+            document.getElementById('verifyForm').reset();
+            hideResult();
+            hideError();
+        }
+
+        function showLoading() {
+            document.getElementById('loading').style.display = 'block';
+        }
+
+        function hideLoading() {
+            document.getElementById('loading').style.display = 'none';
+        }
+
+        function showResult() {
+            document.getElementById('resultSection').style.display = 'block';
+        }
+
+        function hideResult() {
+            document.getElementById('resultSection').style.display = 'none';
+        }
+
+        function showError(message) {
+            const errorDiv = document.getElementById('error');
+            errorDiv.textContent = message;
+            errorDiv.style.display = 'block';
+        }
+
+        function hideError() {
+            document.getElementById('error').style.display = 'none';
+        }
+    </script>
+</body>
+</html>
+
