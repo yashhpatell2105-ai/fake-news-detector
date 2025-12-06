@@ -32,14 +32,17 @@ def verify_news():
             return jsonify({'error': 'Please provide either article text or URL'}), 400
         
         # If URL provided, try to extract text
+        soup = None
         if article_url and not article_text:
-            article_text = detector.extract_text_from_url(article_url)
+            # extract_text_from_url returns (text, soup)
+            article_text, soup = detector.extract_text_from_url(article_url)
         
         # Perform analysis
         result = detector.analyze_article(
             text=article_text,
             source=source,
-            url=article_url
+            url=article_url,
+            soup=soup
         )
         
         return jsonify(result)

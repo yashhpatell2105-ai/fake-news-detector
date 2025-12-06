@@ -410,101 +410,128 @@ class FakeNewsDetector:
     
     def check_source_credibility(self, source: str, url: str, text: str = "", soup: BeautifulSoup = None) -> Dict[str, any]:
         """Enhanced source credibility check"""
-        score = 50  # Start neutral
-        factors = []
-        tier = "Unknown"
-        is_trusted = False
-        is_blacklisted = False
-        
+        # We will return separate assessments for URL and for the provided source name
+        overall_score = 50  # aggregate baseline
+        overall_factors: List[str] = []
+
+        url_result = {
+            'domain': None,
+            'is_trusted': False,
+            'is_blacklisted': False,
+            'score': None,
+            'factors': []
+        }
+
+        source_name_result = {
+            'source': source,
+            'is_trusted': False,
+            'authenticated_hint': False,
+            'factors': []
+        }
+
+        # Analyze URL (if provided)
         if url:
             normalized_domain, base_domain = self.normalize_url(url)
-            
+            url_result['domain'] = normalized_domain
+
             # Check whitelist
             if normalized_domain in self.trusted_domains:
-                is_trusted = True
-                score = 80  # Minimum for trusted sources
-                tier = "Trusted Publisher"
-                factors.append(f"Source '{normalized_domain}' is on the trusted publisher whitelist")
-            
+                url_result['is_trusted'] = True
+                url_result['score'] = 85
+                url_result['factors'].append(f"URL domain '{normalized_domain}' is on the trusted publisher whitelist")
+
             # Check blacklist
             elif normalized_domain in self.blacklisted_domains:
-                is_blacklisted = True
-                score = 15
-                tier = "Low Credibility"
-                factors.append(f"Source '{normalized_domain}' is on the blacklist")
-            
+                url_result['is_blacklisted'] = True
+                url_result['score'] = 15
+                url_result['factors'].append(f"URL domain '{normalized_domain}' is on the blacklist")
+
             else:
-                # Unknown source - check reputation
                 ssl_info = self.check_ssl_certificate(normalized_domain)
                 age_info = self.estimate_domain_age(normalized_domain)
-                
-                score += ssl_info['score_bonus']
-                score += age_info['score_bonus']
-                
+
+                url_score = 50 + ssl_info['score_bonus'] + age_info['score_bonus']
+                url_result['score'] = max(0, min(100, url_score))
+
                 if ssl_info['has_ssl']:
-                    factors.append("Domain has valid SSL certificate")
+                    url_result['factors'].append('Domain has valid SSL certificate')
                     if ssl_info['organization']:
-                        factors.append(f"SSL certificate shows organization: {ssl_info['organization']}")
+                        url_result['factors'].append(f"SSL certificate organization: {ssl_info['organization']}")
                 else:
-                    factors.append("Domain lacks SSL certificate or certificate is invalid")
-                
+                    url_result['factors'].append('Domain lacks SSL or certificate invalid')
+
                 if age_info['age_years'] >= 5:
-                    factors.append(f"Domain appears to be established (estimated {age_info['age_years']}+ years)")
+                    url_result['factors'].append(f"Domain appears established (est. {age_info['age_years']}+ years)")
                 elif age_info['age_years'] < 0.5:
-                    factors.append("Domain appears to be very new (<6 months)")
-                
-                # Set tier for unknown sources
-                if 45 <= score <= 60:
-                    tier = "Unknown Source (Neutral)"
-                elif score < 45:
-                    tier = "Low Credibility"
-                else:
-                    tier = "Moderate Credibility"
-        
-        # Author metadata check
+                    url_result['factors'].append('Domain appears very new (<6 months)')
+
+        # Analyze provided source name (publisher field)
+        if source and source.strip():
+            s = source.strip().lower()
+            # If source looks like a URL or domain
+            if 'http' in s or '.' in s:
+                try:
+                    src_norm, _ = self.normalize_url(s)
+                    if src_norm in self.trusted_domains:
+                        source_name_result['is_trusted'] = True
+                        source_name_result['factors'].append(f"Source field domain '{src_norm}' is trusted")
+                except:
+                    pass
+            else:
+                # Heuristic: check if any trusted domain string appears in source name
+                for td in self.trusted_domains:
+                    if td in s:
+                        source_name_result['is_trusted'] = True
+                        source_name_result['factors'].append(f"Source name references trusted publisher '{td}'")
+                        break
+
+            # Heuristic for 'authenticated' hint
+            if any(k in s for k in ['official', 'press', 'office', 'gov', 'department']):
+                source_name_result['authenticated_hint'] = True
+                source_name_result['factors'].append('Source name contains words suggesting an official or authenticated publisher')
+
+        # Author metadata check (keeps existing logic)
         author_info = self.extract_author_metadata(text, soup)
-        score += author_info['score_bonus']
-        
         if author_info['found']:
-            factors.append(f"Article has author byline: {author_info['author']}")
+            overall_factors.append(f"Article byline found: {author_info['author']}")
         else:
-            factors.append("No author byline found")
-        
-        # Fact-checking integration
+            overall_factors.append('No author byline found')
+
+        # Fact-checking
         fact_check = self.check_fact_checking_apis(text, url)
-        score += fact_check['score_bonus']
-        
         if fact_check['checked']:
             if fact_check['verdict'] == 'true':
-                factors.append("Fact-check verification: Claims verified as TRUE")
+                overall_factors.append('Fact-check: claims verified TRUE')
             elif fact_check['verdict'] == 'false':
-                factors.append("Fact-check verification: Claims verified as FALSE")
-        
+                overall_factors.append('Fact-check: claims verified FALSE')
+
         # Semantic cross-verification
         semantic_check = self.semantic_cross_verification(text)
-        score += semantic_check['score_bonus']
-        
         if semantic_check['verified']:
-            factors.append(f"Semantic cross-verification: Similar claims found in credible sources (similarity: {semantic_check['similarity_score']:.2f})")
-        
-        # Ensure trusted sources maintain minimum score
-        if is_trusted:
-            score = max(score, 80)  # Never below 80 for trusted sources
-            factors.append("Trusted source protection: Score protected from language/quality penalties")
-        
-        # Ensure blacklisted sources stay low
-        if is_blacklisted:
-            score = min(score, 20)
-        
+            overall_factors.append(f"Semantic cross-check positive (similarity {semantic_check['similarity_score']})")
+
+        # Compose overall score conservatively (used by older flows)
+        # Combine URL score if available, source hint, semantic and author bonuses
+        combined = 50
+        if url_result.get('score') is not None:
+            combined = (combined + url_result['score']) / 2
+        if source_name_result['is_trusted']:
+            combined = min(100, combined + 10)
+        if semantic_check.get('score_bonus'):
+            combined = min(100, combined + semantic_check['score_bonus'])
+        if author_info.get('score_bonus'):
+            combined = min(100, combined + author_info['score_bonus'])
+
+        overall_score = combined
+
         return {
-            'score': min(100, max(0, score)),
-            'tier': tier,
-            'is_trusted': is_trusted,
-            'is_blacklisted': is_blacklisted,
-            'factors': factors,
+            'score': round(float(overall_score), 1),
+            'factors': overall_factors,
             'author_info': author_info,
             'fact_check': fact_check,
-            'semantic_check': semantic_check
+            'semantic_check': semantic_check,
+            'url_assessment': url_result,
+            'source_assessment': source_name_result
         }
     
     def analyze_language_patterns(self, text: str, is_trusted: bool = False) -> Dict[str, any]:
@@ -649,13 +676,17 @@ class FakeNewsDetector:
         except Exception as e:
             return "", None
     
-    def analyze_article(self, text: str, source: str = "", url: str = "") -> Dict[str, any]:
-        """Enhanced article analysis with improved source credibility"""
-        
-        soup = None
+    def analyze_article(self, text: str, source: str = "", url: str = "", soup: BeautifulSoup = None) -> Dict[str, any]:
+        """Analyze article text primarily, and separately assess URL and source name trust.
+
+        Priority: provided `text` is used for content/fake analysis. URL and source fields
+        are assessed independently for publisher credibility.
+        """
+
+        # If text not provided but URL is, attempt extraction
         if not text and url:
             text, soup = self.extract_text_from_url(url)
-        
+
         if not text:
             return {
                 'is_fake': True,
@@ -665,97 +696,78 @@ class FakeNewsDetector:
                 'source_tier': 'Unknown',
                 'details': {}
             }
-        
-        # Perform source credibility check (enhanced)
-        source_analysis = self.check_source_credibility(source, url, text, soup)
-        is_trusted = source_analysis.get('is_trusted', False)
-        is_blacklisted = source_analysis.get('is_blacklisted', False)
-        
-        # Perform language and quality analysis with trusted source protection
-        language_analysis = self.analyze_language_patterns(text, is_trusted)
-        quality_analysis = self.check_content_quality(text, is_trusted)
 
-        # Optional AI assessment (Gemini/Grok/OpenAI-compatible)
-        ai_assessment = self.ai_assess_article(text, source, url)
-        
-        # Apply trusted source protection to scores
-        source_score = source_analysis['score']
+        # Content-focused analysis (text prioritized)
+        language_analysis = self.analyze_language_patterns(text, is_trusted=False)
+        quality_analysis = self.check_content_quality(text, is_trusted=False)
+
+        # Combine into a text-only score (text drives fake/not-fake decision)
         language_score = language_analysis['score']
         quality_score = quality_analysis['score']
-        
-        if is_trusted:
-            # Ensure minimum scores for trusted sources
-            source_score = max(source_score, 80)
-            language_score = max(language_score, 60)
-            quality_score = max(quality_score, 60)
-        
-        # Calculate overall score (weighted average)
-        overall_score = (
-            source_score * 0.3 +
-            language_score * 0.4 +
-            quality_score * 0.3
-        )
-        
-        # Ensure trusted sources never drop below 60 unless fact-checked as false
-        if is_trusted and not source_analysis['fact_check'].get('verdict') == 'false':
-            overall_score = max(overall_score, 60)
-        
-        # Determine classification
-        if is_blacklisted:
-            is_fake = True
-            confidence = 0.9
-            message = "This article is from a known low-credibility source."
-        elif overall_score >= 65:
-            is_fake = False
-            confidence = min(0.95, 0.5 + (overall_score - 65) / 70)
-            message = "This article appears to be from a credible source with good quality content."
-        elif overall_score >= 50:
-            is_fake = False
-            confidence = 0.6
-            if source_analysis['tier'] == "Unknown Source (Neutral)":
-                message = "This article is from an unknown source. Please verify claims with external fact-checking sources."
-            else:
-                message = "This article shows mixed signals. Exercise caution and verify claims independently."
-        elif overall_score >= 35:
-            is_fake = False
-            confidence = 0.7
-            message = "This article has several warning signs. Be skeptical and fact-check claims."
+        text_score = (language_score * 0.6) + (quality_score * 0.4)
+
+        # Simple text-based classification
+        if text_score >= 65:
+            text_is_fake = False
+            text_confidence = min(0.95, 0.5 + (text_score - 65) / 70)
+            text_message = 'Article text appears credible based on language and quality analysis.'
+        elif text_score >= 50:
+            text_is_fake = False
+            text_confidence = 0.6
+            text_message = 'Article text shows mixed signals; verify claims.'
+        elif text_score >= 35:
+            text_is_fake = False
+            text_confidence = 0.7
+            text_message = 'Article text has warning signs; be skeptical.'
         else:
-            is_fake = True
-            confidence = min(0.95, 0.5 + (35 - overall_score) / 35)
-            message = "This article shows strong indicators of being fake or misleading news."
-        
-        # Calculate confidence percentage
-        confidence_percent = round(confidence * 100, 1)
-        
+            text_is_fake = True
+            text_confidence = min(0.95, 0.5 + (35 - text_score) / 35)
+            text_message = 'Article text shows strong indicators of being fake or misleading.'
+
+        # Assess URL and source name separately
+        source_analysis = self.check_source_credibility(source, url, text, soup)
+        url_assessment = source_analysis.get('url_assessment', {})
+        source_assessment = source_analysis.get('source_assessment', {})
+
+        # Overall decision: prioritize text assessment but force fake if URL blacklisted
+        overall_is_fake = text_is_fake or url_assessment.get('is_blacklisted', False)
+        # Confidence blends text confidence and URL/source trust signals
+        overall_confidence = text_confidence
+        if url_assessment.get('is_trusted'):
+            overall_confidence = max(overall_confidence, 0.6)
+        if source_assessment.get('is_trusted'):
+            overall_confidence = max(overall_confidence, 0.6)
+        if url_assessment.get('is_blacklisted'):
+            overall_confidence = max(overall_confidence, 0.85)
+
+        overall_score = round(float(source_analysis.get('score', text_score)), 1)
+
         return {
-            'is_fake': is_fake,
-            'confidence': confidence,
-            'confidence_percent': confidence_percent,
-            'score': round(overall_score, 1),
-            'source_score': round(source_score, 1),
+            'is_fake': overall_is_fake,
+            'confidence': overall_confidence,
+            'confidence_percent': round(overall_confidence * 100, 1),
+            'score': overall_score,
+            'text_score': round(text_score, 1),
             'language_score': round(language_score, 1),
             'quality_score': round(quality_score, 1),
-            'source_tier': source_analysis['tier'],
-            'message': message,
-            'ai_assessment': ai_assessment,
-            'fact_check_corroboration': source_analysis['fact_check']['checked'],
-            'fact_check_verdict': source_analysis['fact_check'].get('verdict'),
-            'cross_source_verification': source_analysis['semantic_check']['verified'],
-            'cross_source_similarity': source_analysis['semantic_check'].get('similarity_score', 0),
-            'explanation': f"Source: {source_analysis['tier']}. Language analysis: {language_score}/100. Content quality: {quality_score}/100.",
-            'details': {
-                'source_analysis': {
-                    'score': source_score,
-                    'tier': source_analysis['tier'],
-                    'factors': source_analysis['factors'],
-                    'author': source_analysis['author_info'].get('author'),
-                    'is_trusted': is_trusted,
-                    'is_blacklisted': is_blacklisted
-                },
+            'message': text_message,
+            'text_assessment': {
+                'is_fake': text_is_fake,
+                'score': round(text_score, 1),
+                'confidence': text_confidence,
                 'language_analysis': language_analysis,
                 'quality_analysis': quality_analysis,
-                'fact_check': source_analysis['fact_check'],
-                'semantic_check': source_analysis['semantic_check']
+                'message': text_message
+            },
+            'url_assessment': url_assessment,
+            'source_assessment': source_assessment,
+            'ai_assessment': self.ai_assess_article(text, source, url),
+            'fact_check_corroboration': source_analysis.get('fact_check', {}).get('checked', False),
+            'fact_check_verdict': source_analysis.get('fact_check', {}).get('verdict'),
+            'semantic_check': source_analysis.get('semantic_check', {}),
+            'details': {
+                'author_info': source_analysis.get('author_info'),
+                'fact_check': source_analysis.get('fact_check'),
+                'semantic_check': source_analysis.get('semantic_check')
             }
         }
